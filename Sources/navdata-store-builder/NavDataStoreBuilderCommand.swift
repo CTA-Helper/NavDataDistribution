@@ -30,6 +30,9 @@ struct NavDataStoreBuilderCommand: AsyncParsableCommand {
   @Flag(help: "Publish the store and its manifest to R2, with credentials from R2_* variables.")
   var upload = false
 
+  @Option(help: "The folder in the R2 bucket to publish into.")
+  var keyPrefix = NavDataStoreUploader.defaultKeyPrefix
+
   @Flag(help: "Exit without building when the cycle's manifest is already published to R2.")
   var skipIfPublished = false
 
@@ -77,7 +80,9 @@ struct NavDataStoreBuilderCommand: AsyncParsableCommand {
 
     let release = try await loadRelease(downloadingInto: outputURL.appending(path: "release"))
     let uploader =
-      try upload ? NavDataStoreUploader(config: R2Configuration(), logger: logger) : nil
+      try upload
+      ? NavDataStoreUploader(config: R2Configuration(), keyPrefix: keyPrefix, logger: logger)
+      : nil
 
     if skipIfPublished, let uploader, try await uploader.isPublished(cycle: release.cycle) {
       logger.notice("Cycle \(release.cycle) is already published; nothing to do.")

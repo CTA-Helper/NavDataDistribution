@@ -9,10 +9,11 @@ public import Logging
  store it names being there, whereas the reverse ordering would advertise a file still uploading.
  */
 public struct NavDataStoreUploader: Sendable {
-  /// Where published nav data lives in the bucket.
-  public static let keyPrefix = "cta-helper/navdata"
+  /// Where CTA Helper looks for published nav data in the bucket.
+  public static let defaultKeyPrefix = "cta-helper/navdata"
 
   private let config: R2Configuration
+  private let keyPrefix: String
   private let logger: Logger
 
   /**
@@ -20,14 +21,18 @@ public struct NavDataStoreUploader: Sendable {
 
    - Parameters:
      - config: The bucket to publish to.
+     - keyPrefix: The folder in the bucket to publish into, with or without a trailing slash.
      - logger: Where to report progress.
    */
-  public init(config: R2Configuration, logger: Logger) {
+  public init(
+    config: R2Configuration,
+    keyPrefix: String = defaultKeyPrefix,
+    logger: Logger
+  ) {
     self.config = config
+    self.keyPrefix = keyPrefix.hasSuffix("/") ? String(keyPrefix.dropLast()) : keyPrefix
     self.logger = logger
   }
-
-  private static func key(for filename: String) -> String { "\(keyPrefix)/\(filename)" }
 
   /**
    Whether a cycle's manifest is already published, and so the cycle needs no rebuilding.
@@ -36,7 +41,7 @@ public struct NavDataStoreUploader: Sendable {
    */
   public func isPublished(cycle: String) async throws -> Bool {
     try await R2Uploader(config: config, logger: logger)
-      .objectExists(at: Self.key(for: "\(cycle).json"))
+      .objectExists(at: key(for: "\(cycle).json"))
   }
 
   /**
@@ -51,23 +56,25 @@ public struct NavDataStoreUploader: Sendable {
 
     try await uploader.uploadFile(
       at: output.store,
-      key: Self.key(for: output.store.lastPathComponent),
+      key: key(for: output.store.lastPathComponent),
       contentType: "application/x-xz"
     )
 
     // Only now is the manifest true.
     try await uploader.uploadFile(
       at: output.manifest,
-      key: Self.key(for: output.manifest.lastPathComponent),
+      key: key(for: output.manifest.lastPathComponent),
       contentType: "application/json"
     )
 
     logger.notice("Published cycle \(cycle) to \(manifestURL(cycle: cycle))")
   }
 
+  private func key(for filename: String) -> String { "\(keyPrefix)/\(filename)" }
+
   private func manifestURL(cycle: String) -> String {
     let base =
       config.publicURL.hasSuffix("/") ? String(config.publicURL.dropLast()) : config.publicURL
-    return "\(base)/\(Self.key(for: "\(cycle).json"))"
+    return "\(base)/\(key(for: "\(cycle).json"))"
   }
 }
