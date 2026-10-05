@@ -107,7 +107,7 @@ jobs:
             --data release/cta-navdata.json.gz \
             --output out \
             --upload \
-            --key-prefix "$KEY_PREFIX" 2>&1 | tee build.log
+            --key-prefix "$KEY_PREFIX"
 
       - name: Confirm the cycle is fetchable
         if: steps.cycle.outputs.skip == 'false'
@@ -146,17 +146,13 @@ jobs:
           summary="${CYCLE:+Publishing the store for the cycle taking effect **$CYCLE** failed}"
           summary="${summary:-The run failed before a cycle was resolved}"
 
-          # The log is written to a file rather than interpolated, so nothing in it can be
-          # read as shell.
+          # Links to the run rather than quoting its output: Actions masks secrets only in the
+          # run log, and this repository's issues are public.
           {
             echo "$summary. CTA Helper stays on the previous published cycle, or falls back"
             echo "to importing the Navdata release itself, until this is fixed."
             echo
             echo "[View the run]($RUN_URL)"
-            echo
-            echo '```'
-            tail -c 8000 build.log 2>/dev/null || echo "No build log was produced."
-            echo '```'
           } > issue-body.md
 
           existing="$(TITLE="$title" gh issue list --state open --search "$title in:title" \
