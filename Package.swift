@@ -22,8 +22,8 @@ let package = Package(
   ],
   dependencies: [
     .package(url: "https://github.com/1024jp/GzipSwift", from: "7.0.0"),
-    .package(url: "https://github.com/RISCfuture/StreamingLZMA", branch: "main"),
-    .package(url: "https://github.com/riscfuture/swiftr2", branch: "main"),
+    .package(url: "https://github.com/RISCfuture/StreamingLZMA", from: "2.0.1"),
+    .package(url: "https://github.com/riscfuture/swiftr2", from: "1.2.1"),
     .package(url: "https://github.com/apple/swift-log", from: "1.15.1"),
     .package(url: "https://github.com/apple/swift-argument-parser", from: "1.8.2")
   ],
