@@ -4,13 +4,14 @@ name: Publish Nav Data Store
 # to R2 with a manifest describing it. SwiftData exists only on Apple platforms, so this runs on a
 # Mac rather than alongside the Linux job that generates the release.
 #
-# Idempotent: a cycle whose manifest is already published is skipped, so running daily costs a
-# couple of HTTP requests until Navdata releases a new cycle.
+# Idempotent: a cycle whose manifest is already published is skipped by a Linux job before any Mac
+# starts, so running hourly costs a couple of HTTP requests until Navdata releases a new cycle.
 
 on:
   schedule:
-    # An hour after Navdata publishes, so the release is there to build from.
-    - cron: "0 10 * * *"
+    # Hourly from an hour after Navdata's daily run until the day ends, so a late or slow release
+    # is published within the hour, still ahead of the midnight its cycle takes effect.
+    - cron: "0 10-23 * * *"
   workflow_dispatch:
     inputs:
       cycle:
@@ -30,12 +31,13 @@ env:
   KEY_PREFIX: navdata
 
 jobs:
-  publish:
-    name: Build and publish the store
-    runs-on: xcode-27
+  resolve:
+    name: Find the cycle to publish
+    runs-on: ubuntu-latest
+    outputs:
+      cycle: ${{ steps.cycle.outputs.cycle }}
+      skip: ${{ steps.cycle.outputs.skip }}
     steps:
-      - uses: actions/checkout@v6
-
       - name: Work out which cycle to publish
         id: cycle
         env:
@@ -60,11 +62,19 @@ jobs:
           fi
           echo "cycle=$cycle" >> "$GITHUB_OUTPUT"
 
+  publish:
+    name: Build and publish the store
+    needs: resolve
+    if: needs.resolve.outputs.skip == 'false'
+    runs-on: xcode-27
+    env:
+      CYCLE: ${{ needs.resolve.outputs.cycle }}
+    steps:
+      - uses: actions/checkout@v6
+
       - name: Fetch the release
-        if: steps.cycle.outputs.skip == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
-          CYCLE: ${{ steps.cycle.outputs.cycle }}
         run: |
           set -euo pipefail
           gh release download "$CYCLE" \
@@ -75,11 +85,9 @@ jobs:
           ls -lh release
 
       - name: Enable macros
-        if: steps.cycle.outputs.skip == 'false'
         run: defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
 
       - name: Cache SwiftPM build products
-        if: steps.cycle.outputs.skip == 'false'
         uses: actions/cache@v6
         with:
           path: |
@@ -89,11 +97,9 @@ jobs:
           restore-keys: swiftpm-release-${{ runner.os }}-
 
       - name: Build the builder
-        if: steps.cycle.outputs.skip == 'false'
         run: swift build -c release --product navdata-store-builder
 
       - name: Build and publish the store
-        if: steps.cycle.outputs.skip == 'false'
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -110,9 +116,7 @@ jobs:
             --key-prefix "$KEY_PREFIX"
 
       - name: Confirm the cycle is fetchable
-        if: steps.cycle.outputs.skip == 'false'
         env:
-          CYCLE: ${{ steps.cycle.outputs.cycle }}
           PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
         run: |
           set -euo pipefail
@@ -129,14 +133,18 @@ jobs:
           curl -sfI "$base/$store" > /dev/null
           echo "Published $CYCLE: $base/$CYCLE.json and $base/$store"
 
+  report:
+    name: Report a failed publish
+    needs: [resolve, publish]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
       - name: Report failure
-        if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
-          # gh reads the repository from the checkout, which a failure this step reports
-          # may have been what failed.
+          # There is no checkout here for gh to read the repository from.
           GH_REPO: ${{ github.repository }}
-          CYCLE: ${{ steps.cycle.outputs.cycle }}
+          CYCLE: ${{ needs.resolve.outputs.cycle }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail

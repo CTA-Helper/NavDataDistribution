@@ -57,12 +57,14 @@ python3 -m http.server --directory out 8000
 
 ## Publishing
 
-[`publish.yml`](.github/workflows/publish.yml) runs daily at 10:00 UTC, an hour
-after Navdata's own run, and on demand with an optional cycle to publish. It:
+[`publish.yml`](.github/workflows/publish.yml) runs hourly from 10:00 to 23:00
+UTC, starting an hour after Navdata's own run, and on demand with an optional
+cycle to publish. It:
 
 1. finds the newest Navdata release, or takes the dispatched cycle;
-2. stops if `<R2_PUBLIC_URL>/navdata/<cycle>.json` already answers,
-   so a daily run costs a couple of requests until there is a new cycle;
+2. stops, in a Linux job before any Mac starts, if
+   `<R2_PUBLIC_URL>/navdata/<cycle>.json` already answers, so an hourly run
+   costs a couple of requests until there is a new cycle;
 3. downloads the release, then builds and uploads the store with
    `navdata-store-builder --upload --key-prefix navdata`;
 4. fetches the published manifest and store back from the public URL.
