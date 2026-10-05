@@ -1,0 +1,170 @@
+name: Publish Nav Data Store
+
+# Builds the SwiftData store CTA Helper downloads from a CTA-Helper/Navdata release, and publishes it
+# to R2 with a manifest describing it. SwiftData exists only on Apple platforms, so this runs on a
+# Mac rather than alongside the Linux job that generates the release.
+#
+# Idempotent: a cycle whose manifest is already published is skipped, so running daily costs a
+# couple of HTTP requests until Navdata releases a new cycle.
+
+on:
+  schedule:
+    # An hour after Navdata publishes, so the release is there to build from.
+    - cron: "0 10 * * *"
+  workflow_dispatch:
+    inputs:
+      cycle:
+        description: Navdata release to publish (YYYY-MM-DD), or blank for the newest.
+        required: false
+        type: string
+
+concurrency:
+  group: publish-nav-data-store
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  KEY_PREFIX: cta-helper/navdata
+
+jobs:
+  publish:
+    name: Build and publish the store
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Work out which cycle to publish
+        id: cycle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Never inline, to keep a dispatch input off the shell command line.
+          DISPATCH_CYCLE: ${{ inputs.cycle }}
+          PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$DISPATCH_CYCLE" ]]; then
+            cycle="$DISPATCH_CYCLE"
+          else
+            cycle="$(gh release view --repo CTA-Helper/Navdata --json tagName -q .tagName)"
+          fi
+          echo "Newest released cycle: $cycle"
+
+          if curl -sfI "${PUBLIC_URL%/}/$KEY_PREFIX/$cycle.json" > /dev/null; then
+            echo "Cycle $cycle is already published; nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "cycle=$cycle" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch the release
+        if: steps.cycle.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CYCLE: ${{ steps.cycle.outputs.cycle }}
+        run: |
+          set -euo pipefail
+          gh release download "$CYCLE" \
+            --repo CTA-Helper/Navdata \
+            --pattern manifest.json \
+            --pattern cta-navdata.json.gz \
+            --dir release
+          ls -lh release
+
+      - name: Enable macros
+        if: steps.cycle.outputs.skip == 'false'
+        run: defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
+
+      - name: Cache SwiftPM build products
+        if: steps.cycle.outputs.skip == 'false'
+        uses: actions/cache@v6
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: swiftpm-release-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: swiftpm-release-${{ runner.os }}-
+
+      - name: Build the builder
+        if: steps.cycle.outputs.skip == 'false'
+        run: swift build -c release --product navdata-store-builder
+
+      - name: Build and publish the store
+        if: steps.cycle.outputs.skip == 'false'
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+        run: |
+          set -euo pipefail
+          "$(swift build -c release --show-bin-path)/navdata-store-builder" \
+            --manifest release/manifest.json \
+            --data release/cta-navdata.json.gz \
+            --output out \
+            --upload \
+            --key-prefix "$KEY_PREFIX" 2>&1 | tee build.log
+
+      - name: Confirm the cycle is fetchable
+        if: steps.cycle.outputs.skip == 'false'
+        env:
+          CYCLE: ${{ steps.cycle.outputs.cycle }}
+          PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+        run: |
+          set -euo pipefail
+          base="${PUBLIC_URL%/}/$KEY_PREFIX"
+          manifest="$(curl -sf "$base/$CYCLE.json")"
+          echo "$manifest"
+          store="$(MANIFEST="$manifest" python3 -c "
+          import json, os
+          m = json.loads(os.environ['MANIFEST'])
+          assert m['cycle'] == os.environ['CYCLE'], m
+          assert m['counts']['airports'] > 0, m
+          print(m['store']['filename'])
+          ")"
+          curl -sfI "$base/$store" > /dev/null
+          echo "Published $CYCLE: $base/$CYCLE.json and $base/$store"
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # gh reads the repository from the checkout, which a failure this step reports
+          # may have been what failed.
+          GH_REPO: ${{ github.repository }}
+          CYCLE: ${{ steps.cycle.outputs.cycle }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # Both titles are fixed strings, so every failure of a kind lands on one issue.
+          title="${CYCLE:+Nav data store publish failed for cycle $CYCLE}"
+          title="${title:-Nav data store publish run failed before a cycle was resolved}"
+          summary="${CYCLE:+Publishing the store for the cycle taking effect **$CYCLE** failed}"
+          summary="${summary:-The run failed before a cycle was resolved}"
+
+          # The log is written to a file rather than interpolated, so nothing in it can be
+          # read as shell.
+          {
+            echo "$summary. CTA Helper stays on the previous published cycle, or falls back"
+            echo "to importing the Navdata release itself, until this is fixed."
+            echo
+            echo "[View the run]($RUN_URL)"
+            echo
+            echo '```'
+            tail -c 8000 build.log 2>/dev/null || echo "No build log was produced."
+            echo '```'
+          } > issue-body.md
+
+          existing="$(TITLE="$title" gh issue list --state open --search "$title in:title" \
+            --json number,title --jq 'map(select(.title == env.TITLE)) | .[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file issue-body.md
+            echo "Commented on existing issue #$existing."
+          else
+            gh issue create --title "$title" --body-file issue-body.md
+          fi

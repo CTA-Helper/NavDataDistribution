@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test
+    # SwiftData and the macOS 27 SDK the package targets are only on the Xcode runners.
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v6
+      - name: Enable macros
+        run: defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
+      - name: Cache SwiftPM build products
+        uses: actions/cache@v6
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: swiftpm-debug-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: swiftpm-debug-${{ runner.os }}-
+      - name: Build
+        run: swift build
+      - name: Test
+        run: swift test
+
+  docs:
+    name: Build documentation
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v6
+      - name: Enable macros
+        run: defaults write com.apple.dt.Xcode IDESkipMacroFingerprintValidation -bool YES
+      - name: Build documentation
+        run: |
+          set -o pipefail
+          xcodebuild docbuild \
+            -scheme NavDataSchema \
+            -destination platform=macOS \
+            -derivedDataPath "$RUNNER_TEMP/DocumentationDerivedData" \
+            OTHER_DOCC_FLAGS=--warnings-as-errors \
+            | xcbeautify --renderer github-actions
+
+  swiftlint:
+    name: Run SwiftLint
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      # .swiftlint.yml's parent_config is a gist URL that SwiftLint fetches itself, and a slow or
+      # unreachable gist fails the run. Fetching it here with retries, then pointing the config at
+      # the local copy, takes the network out of the linter's path.
+      - name: Pre-fetch parent SwiftLint config
+        run: |
+          curl -fsSL --retry 3 --retry-delay 2 -o .swiftlint-parent.yml \
+            'https://gist.githubusercontent.com/RISCfuture/c57d132e5e0160a768df1625e20ae3b8/raw/.swiftlint.yml'
+          sed -i '' 's|parent_config:.*|parent_config: .swiftlint-parent.yml|' .swiftlint.yml
+      - name: Install SwiftLint
+        run: brew install swiftlint
+      - name: Run SwiftLint
+        run: swiftlint --strict
+
+  swift-format:
+    name: Run swift-format
+    runs-on: ubuntu-latest
+    container:
+      image: swift:latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download .swift-format config
+        run: |
+          apt-get update && apt-get install -y wget
+          wget -O .swift-format \
+            https://gist.githubusercontent.com/RISCfuture/e0c21afb7bd80a88d128a42bf40d2ecd/raw/.swift-format
+      - name: Run swift-format lint
+        run: swift format lint --strict -r Package.swift Sources Tests
