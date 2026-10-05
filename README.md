@@ -61,10 +61,10 @@ python3 -m http.server --directory out 8000
 after Navdata's own run, and on demand with an optional cycle to publish. It:
 
 1. finds the newest Navdata release, or takes the dispatched cycle;
-2. stops if `<R2_PUBLIC_URL>/cta-helper/navdata/<cycle>.json` already answers,
+2. stops if `<R2_PUBLIC_URL>/navdata/<cycle>.json` already answers,
    so a daily run costs a couple of requests until there is a new cycle;
 3. downloads the release, then builds and uploads the store with
-   `navdata-store-builder --upload --key-prefix cta-helper/navdata`;
+   `navdata-store-builder --upload --key-prefix navdata`;
 4. fetches the published manifest and store back from the public URL.
 
 A failed run opens an issue, or comments on the open one for that cycle. Until
@@ -76,7 +76,7 @@ Navdata release itself.
 Each cycle is keyed by its effective date:
 
 ```text
-cta-helper/navdata/
+navdata/
   2026-09-03.json         store manifest
   2026-09-03.store.lzma   XZ-compressed SwiftData store
   2026-10-01.json

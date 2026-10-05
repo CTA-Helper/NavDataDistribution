@@ -10,7 +10,7 @@ public import Logging
  */
 public struct NavDataStoreUploader: Sendable {
   /// Where CTA Helper looks for published nav data in the bucket.
-  public static let defaultKeyPrefix = "cta-helper/navdata"
+  public static let defaultKeyPrefix = "navdata"
 
   private let config: R2Configuration
   private let keyPrefix: String

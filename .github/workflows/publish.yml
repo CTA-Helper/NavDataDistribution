@@ -27,7 +27,7 @@ permissions:
   issues: write
 
 env:
-  KEY_PREFIX: cta-helper/navdata
+  KEY_PREFIX: navdata
 
 jobs:
   publish:
