@@ -1,5 +1,5 @@
 {
-  "originHash" : "4ee03ec19e12b077739aecffee7a1f6f3522ff073f43af03c5ff4076e2dd39e2",
+  "originHash" : "79080e869c1516800ae15bb074b302f65a2c7a5e5dd837d1f36e0a36fb6eebaa",
   "pins" : [
     {
       "identity" : "gzipswift",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/RISCfuture/StreamingLZMA",
       "state" : {
-        "branch" : "main",
-        "revision" : "748c91c912b4e5f7727ee299e49827d124d0a231"
+        "revision" : "60db3a2b44f349b459ffd578c5715059facc9a2f",
+        "version" : "2.0.1"
       }
     },
     {
@@ -60,8 +60,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/riscfuture/swiftr2",
       "state" : {
-        "branch" : "main",
-        "revision" : "6595082e5aca345c029ef8cfcc1e8edb100a884b"
+        "revision" : "4ff29069563fe58021e15f87e1bdb72a1cdeb3db",
+        "version" : "1.2.1"
       }
     }
   ],
