@@ -1,0 +1,19 @@
+# Swift Package Manager
+/.build
+/Packages
+.swiftpm/configuration/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+
+# Xcode user state
+xcuserdata/
+DerivedData/
+
+# Stores and manifests the builder writes
+/out
+
+# SwiftLint remote config cache
+.swiftlint/RemoteConfigCache
+
+# swift-format (downloaded in CI)
+.swift-format
+.claude/settings.local.json
