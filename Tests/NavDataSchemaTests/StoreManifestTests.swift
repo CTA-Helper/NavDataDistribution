@@ -49,16 +49,13 @@ struct `Store manifest` {
     #expect(!Self.manifest(fingerprint: "stale").matchesSchema)
   }
 
+  /// The format the builder writes a manifest in and the app reads it in.
   @Test
-  func `round-trips through its own encoder and decoder`() throws {
-    let encoded = try NavDataStoreManifest.encoder().encode(Self.manifest())
-    let decoded = try NavDataStoreManifest.decoder().decode(
-      NavDataStoreManifest.self,
-      from: encoded
+  func `writes its dates in ISO 8601`() throws {
+    let json = try #require(
+      String(bytes: NavDataStoreManifest.encoder().encode(Self.manifest()), encoding: .utf8)
     )
 
-    #expect(decoded.effective == Self.effective)
-    #expect(decoded.expires == Self.expires)
-    #expect(decoded.counts == Self.manifest().counts)
+    #expect(json.contains(#""effective" : "2026-09-03T00:00:00Z""#))
   }
 }
