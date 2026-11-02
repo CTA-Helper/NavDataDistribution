@@ -9,9 +9,10 @@ name: Publish Nav Data Store
 
 on:
   schedule:
-    # Hourly from an hour after Navdata's daily run until the day ends, so a late or slow release
-    # is published within the hour, still ahead of the midnight its cycle takes effect.
-    - cron: "0 10-23 * * *"
+    # Hourly on Wednesdays and Thursdays, from an hour after Navdata's run until the day ends, so a
+    # late or slow release is published within the hour, still ahead of the midnight its cycle takes
+    # effect.
+    - cron: "0 10-23 * * 3,4"
   workflow_dispatch:
     inputs:
       cycle:
