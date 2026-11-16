@@ -32,6 +32,11 @@ env:
   KEY_PREFIX: navdata
 
 jobs:
+  route:
+    uses: RISCfuture/ci-workflows/.github/workflows/minerva-route.yml@1.1.0
+    permissions:
+      contents: read
+
   resolve:
     name: Find the cycle to publish
     runs-on: ubuntu-latest
@@ -65,9 +70,11 @@ jobs:
 
   publish:
     name: Build and publish the store
-    needs: resolve
+    needs:
+      - route
+      - resolve
     if: needs.resolve.outputs.skip == 'false'
-    runs-on: xcode-27
+    runs-on: ${{ fromJSON(needs.route.outputs.macos-27) }}
     env:
       CYCLE: ${{ needs.resolve.outputs.cycle }}
     steps:

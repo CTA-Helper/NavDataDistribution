@@ -14,10 +14,16 @@ permissions:
   contents: read
 
 jobs:
+  route:
+    uses: RISCfuture/ci-workflows/.github/workflows/minerva-route.yml@1.1.0
+    permissions:
+      contents: read
+
   test:
     name: Build and test
-    # SwiftData and the macOS 27 SDK the package targets are only on the Xcode runners.
-    runs-on: xcode-27
+    needs: route
+    # Runs the package's macOS 27 tests, so it needs the macOS 27 pool.
+    runs-on: ${{ fromJSON(needs.route.outputs.macos-27) }}
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Enable macros
@@ -37,7 +43,8 @@ jobs:
 
   docs:
     name: Build documentation
-    runs-on: xcode-27
+    needs: route
+    runs-on: ${{ fromJSON(needs.route.outputs.xcode-27) }}
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Enable macros
@@ -54,7 +61,8 @@ jobs:
 
   swiftlint:
     name: Run SwiftLint
-    runs-on: macos-latest
+    needs: route
+    runs-on: ${{ fromJSON(needs.route.outputs.macos-latest) }}
     steps:
       - uses: actions/checkout@v7.0.1
       # .swiftlint.yml's parent_config is a gist URL that SwiftLint fetches itself, and a slow or
